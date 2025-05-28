@@ -10,7 +10,8 @@ namespace PubMedEdu.SearchApi.Controllers;
 [Route("/api/v1/search")]
 public class SearchController(ILogger<SearchController> logger, IConfiguration configuration) : ControllerBase
 {
-    private const string MlModelEndpointUri = "https://localhost";
+    private const string MlModelEndpointUri = "https://mock-ml-api1817.azurewebsites.net/api/v1/search";
+    private const string Oid = "http://schemas.microsoft.com/identity/claims/objectidentifier";
 
     [HttpPost]
     public async Task<IActionResult> ExecuteSearch([FromBody] SearchRequest request)
@@ -34,11 +35,6 @@ public class SearchController(ILogger<SearchController> logger, IConfiguration c
 
     private async Task<(HttpStatusCode, SearchResult?)> GetSearchResult(SearchRequest request)
     {
-        // TODO: For testing only.
-        await Task.Delay(2000);
-
-        return (HttpStatusCode.OK, new SearchResult {PossibleResult = "Ligma"});
-        
         using var httpClient = new HttpClient();
         
         HttpResponseMessage response = await httpClient.PostAsJsonAsync(MlModelEndpointUri, request);
@@ -60,8 +56,12 @@ public class SearchController(ILogger<SearchController> logger, IConfiguration c
     {
         try
         {
-            string? userId = User.FindFirst("oid")?.Value;
-
+            string? userId = User.FindFirst(Oid)?.Value;
+            
+            logger.LogInformation("TrySendHistory reached. Authenticated: {IsAuth}, oid: {Oid}",
+                User.Identity?.IsAuthenticated,
+                User.FindFirst(Oid)?.Value ?? "null");
+            
             if (!string.IsNullOrEmpty(userId))
             {
                 var history = new SearchHistoryMessage
@@ -78,6 +78,7 @@ public class SearchController(ILogger<SearchController> logger, IConfiguration c
 
                 var message = new ServiceBusMessage(JsonSerializer.Serialize(history));
                 await sender.SendMessageAsync(message);
+                logger.LogInformation("Message sent to Service Bus for user {UserId}", userId);
             }
         }
         catch (Exception e)
